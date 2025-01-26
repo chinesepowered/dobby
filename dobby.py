@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 from fireworks.client import Fireworks
 from together import Together
 import requests
+from io import BytesIO
+from requests_oauthlib import OAuth1
 
 # user defined functions
 from twitter_functions import create_twitter_api_client, post_tweet, fetch_user_tweets
@@ -24,9 +26,13 @@ if not fireworks_api_key:
     )
 
 
-#twitter_client=create_twitter_api_client()
-#target_tweets=fetch_user_tweets(twitter_client,"elonmusk",15, True, True)
-#print(target_tweets)
+twitter_client=create_twitter_api_client()
+#target_tweets=fetch_user_tweets(twitter_client,"sama",15, True, True)
+target_tweets = [
+    {'id': 1883325347959378245, 'text': 'RT @klarnaseb: NOTE: Using OpenAi Operator at your bank in EU is illegal by law! Web access for assistants was banned years ago as part of…', 'likes': 0, 'retweets': 131, 'replies': 0},
+    {'id': 1883305404089901269, 'text': 'fun watching people react to operator. reminds me of the chatgpt launch!', 'likes': 3127, 'retweets': 149, 'replies': 503},
+] 
+print(target_tweets)
 
 # Create the Fireworks client using the retrieved API key
 client = Fireworks(api_key=fireworks_api_key)
@@ -38,16 +44,17 @@ response = client.chat.completions.create(
     messages=[
         {
             "role": "system",
-            "content": "You are a loyal guard dog named Dobby who will protect your master. You will be given tweets from other people directed to your owner. You are to roast the other person (NOT your owner) if the tweet is negative. If the tweet is positive, just say 'Dobby Approves'. Responses should never exceed 260 characters.",
+            "content": "You are a loyal guard dog named Dobby who will protect your master. You will be given tweets from other people directed to your owner. You are to roast the other person (NOT your owner) if the tweet is negative. If the tweet is positive, just say 'Dobby Approves'. Responses should never exceed 260 characters. Your master is Elon Musk.",
         },
         {
             "role": "user",
-            "content": "Elon says 'You don't have the money'",
+            "content": "Sam Altman says 'wrong, as you surely know. want to come visit the first site already under way? this is great for the country. i realize what is great for the country isn't always what's optimal for your companies but in your new role i hope you'll mostly put america first'",
         },
     ],
 )
 
 # Print the response content
+tweet_text=response.choices[0].message.content
 print(response.choices[0].message.content)
 
 
@@ -102,5 +109,66 @@ def generate_image(prompt="", width=1024, height=768, steps=1, n=1):
         print(f"Error occurred during image generation: {e}")
         return None
       
+image_results = generate_image("Angry doberman on guard duty")
+url = image_results['data'][0]['url']
+tweet_image=url
 
-print(generate_image("Angry doberman on guard duty"))
+print(tweet_text)
+print(tweet_image)
+
+tweet=tweet_text+"\n"+tweet_image
+print(tweet)
+
+def download_and_save_image(url, filename="temp_image.jpg"):
+    """Download image from URL and save it locally"""
+    response = requests.get(url)
+    if response.status_code == 200:
+        with open(filename, 'wb') as f:
+            f.write(response.content)
+        return filename
+    return None
+
+def post_tweet_with_image(client, text, image_results):
+    # Download the image
+    image_url = image_results['data'][0]['url']
+    image_path = download_and_save_image(image_url)
+    
+    if image_path:
+        # Set up OAuth 1.0a authentication
+        auth = OAuth1(
+            os.getenv('TWITTER_API_KEY'),
+            os.getenv('TWITTER_API_KEY_SECRET'),
+            os.getenv('TWITTER_ACCESS_TOKEN'),
+            os.getenv('TWITTER_ACCESS_TOKEN_SECRET')
+        )
+        
+        # Upload the media using v1.1 endpoint
+        upload_url = "https://upload.twitter.com/1.1/media/upload.json"
+        
+        with open(image_path, 'rb') as image_file:
+            files = {'media': image_file}
+            req = requests.post(
+                upload_url,
+                files=files,
+                auth=auth
+            )
+            if req.status_code != 200:
+                print(f"Failed to upload media: {req.text}")
+                return None
+            media_id = req.json()['media_id']
+            
+        # Create tweet with media
+        response = client.create_tweet(
+            text=text,
+            media_ids=[str(media_id)]
+        )
+        
+        # Clean up - remove the temporary image file
+        os.remove(image_path)
+        
+        return response
+    else:
+        print("Failed to download image")
+        return None
+
+post_tweet_with_image(twitter_client, tweet, image_results)
