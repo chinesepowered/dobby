@@ -170,7 +170,8 @@ print(tweet_text)
 print(tweet_image)
 
 tweet = tweet_text + "\n" + tweet_image
+first_275_chars = tweet_text[:275]
 print(tweet)
 
-post_tweet_with_image(twitter_client, tweet_text, image_results)
+post_tweet_with_image(twitter_client, first_275_chars, image_results)
 post_tweet(twitter_client, tweet_text)  # due to some Twitter error in media upload
